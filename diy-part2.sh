@@ -35,3 +35,9 @@ if [ -f "package/base-files/files/etc/shadow" ]; then
 else
     echo "警告: shadow 文件不存在，密码设置可能失败"
 fi
+
+# Fix HomeProxy transport "raw" bug (Sing-box 1.8+ compatibility)
+sed -i 's/transport: !isEmpty(node.transport) ? {/transport: (!isEmpty(node.transport) \&\& node.transport !== "raw") ? {/' feeds/luci/applications/luci-app-homeproxy/root/etc/homeproxy/scripts/generate_client.uc
+
+# Fix HomeProxy missing Mainland China routing rules in bypass mode
+sed -i "/outbound: 'direct-out'/a \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ push(config.route.rules, { rule_set: 'geosite-cn', action: 'route', outbound: 'direct-out' });\n\t\t\tpush(config.route.rules, { rule_set: 'geoip-cn', action: 'route', outbound: 'direct-out' });" feeds/luci/applications/luci-app-homeproxy/root/etc/homeproxy/scripts/generate_client.uc
