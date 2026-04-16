@@ -36,6 +36,52 @@ sed -i "/outbound: 'direct-out'/a ...push(config.route.rules...)" ...
 **记录时间**: 2026-04-16
 **状态**: 已解决 (Resolved)
 
+## 5. 白烟测试 (Smoke Test) 验证流程
+刷入固件后，执行以下指令确保修复逻辑已生效：
+
+### A. 配置逻辑审计
+```bash
+# 确认规则中包含 geosite-cn 和 geoip-cn 且指向 direct-out
+cat /var/run/homeproxy/sing-box-c.json | grep -A 20 '"rules":' | grep -E "geosite-cn|geoip-cn|direct-out"
+```
+
+### B. 流量分流实测
+```bash
+# 测试国内 (应返回真实宽带 IP)
+curl -L -s http://myip.ipip.net
+# 测试境外 (应返回节点 IP)
+curl -L -s https://api.myip.la
+```
+
+## 6. PVE (Proxmox VE) 快速部署指南
+如果你需要删除旧 VM (ID 100) 并重新部署最新固件，可参考以下标准化脚本：
+
+```bash
+# 1. 设置变量
+STORAGE=local-lvm
+IMG_PATH=/tmp/immortalwrt-x86-64-generic-squfs-combined-efi.img
+
+# 2. 创建 VM (ID 100, UEFI 引导)
+qm create 100 --name ImmortalWrt --net0 virtio,bridge=vmbr0 --bios ovmf --ostype l26 --cpu host --cores 2 --memory 1024
+
+# 3. 导入磁盘
+qm importdisk 100 $IMG_PATH $STORAGE
+
+# 4. 挂载磁盘到 scsi0
+qm set 100 --scsihw virtio-scsi-pci --scsi0 $STORAGE:vm-100-disk-0
+
+# 5. 配置 EFI 磁盘 (UEFI 模式必需)
+qm set 100 --efidisk0 $STORAGE:1
+
+# 6. 设置引导顺序
+qm set 100 --boot order=scsi0
+
+# 7. 启动
+qm start 100
+```
+
+---
+
 ## 1. 核心工作原理
 HomeProxy 在系统中的运行流程如下：
 - **配置源 (UCI)**：`/etc/config/homeproxy` 存储了 Web 界面的设置。
