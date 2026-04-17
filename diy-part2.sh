@@ -24,3 +24,8 @@ chmod +x package/base-files/files/etc/uci-defaults/99-set-root-password
 
 
 # 注意：HomeProxy 补丁已集成到 maifeipin/homeproxy 源码，此处不再需要临时补丁。
+
+# 集成 MetaCubeXD 面板到 HomeProxy
+mkdir -p package/luci-app-homeproxy/root/etc/homeproxy/ui
+curl -sL https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz | tar -xz -C package/luci-app-homeproxy/root/etc/homeproxy/ui
+
