@@ -10,34 +10,25 @@
 # See /LICENSE for more information.
 #
 
-# Modify default IP
-#sed -i 's/192.168.1.1/192.168.50.5/g' package/base-files/files/bin/config_generate
-
-# Modify default theme
-#sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
-
-# Modify hostname
-#sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
-
 # 固化网关 IP
 sed -i 's/192.168.1.1/192.168.2.253/g' package/base-files/files/bin/config_generate
 
-# 设置登录密码
-# 默认密码为 password
-PASSWORD='password'
-# 检查 shadow 文件是否存在
-if [ -f "package/base-files/files/etc/shadow" ]; then
-    # 使用 openssl 生成 SHA-512 密码哈希值（openssl 在 Ubuntu 中默认可用）
-    SHA512_PASSWORD=$(openssl passwd -6 "$PASSWORD")
-    # 使用 | 作为 sed 分隔符，避免哈希值中的 / 冲突
-    sed -i "s|root:.*|root:${SHA512_PASSWORD}:18934:0:99999:7:::|g" package/base-files/files/etc/shadow
-    echo "登录密码已设置为: $PASSWORD"
-else
-    echo "警告: shadow 文件不存在，密码设置可能失败"
-fi
+# 设置登录密码为 password (更稳妥的 uci-defaults 方式)
+mkdir -p package/base-files/files/etc/uci-defaults
+cat > package/base-files/files/etc/uci-defaults/99-set-root-password <<EOF
+#!/bin/sh
+echo "root:password" | chpasswd
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/99-set-root-password
 
-# Fix HomeProxy transport "raw" bug (Sing-box 1.8+ compatibility)
-sed -i 's/transport: !isEmpty(node.transport) ? {/transport: (!isEmpty(node.transport) \&\& node.transport !== "raw") ? {/' feeds/luci/applications/luci-app-homeproxy/root/etc/homeproxy/scripts/generate_client.uc
+# HomeProxy 补丁路径
+TARGET="feeds/luci/applications/luci-app-homeproxy/root/etc/homeproxy/scripts/generate_client.uc"
 
-# Fix HomeProxy missing Mainland China routing rules in bypass mode
-sed -i "/outbound: 'direct-out'/a \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ push(config.route.rules, { rule_set: 'geosite-cn', action: 'route', outbound: 'direct-out' });\n\t\t\tpush(config.route.rules, { rule_set: 'geoip-cn', action: 'route', outbound: 'direct-out' });" feeds/luci/applications/luci-app-homeproxy/root/etc/homeproxy/scripts/generate_client.uc
+# 1. 修复 Transport "raw" 崩溃问题 (Sing-box 1.8+ 兼容性)
+sed -i 's/transport: !isEmpty(node.transport) ? {/transport: (!isEmpty(node.transport) \&\& node.transport !== "raw") ? {/' $TARGET
+
+# 2. 注入 Mainland China 分流规则 (加固单行版，避免语法错误)
+# 插入在 config.route.final 之前
+sed -i "/config.route.final = 'main-out';/i \        if (routing_mode === 'bypass_mainland_china') { push(config.route.rules, { rule_set: 'geosite-cn', action: 'route', outbound: 'direct-out' }); push(config.route.rules, { rule_set: 'geoip-cn', action: 'route', outbound: 'direct-out' }); }" $TARGET
+
