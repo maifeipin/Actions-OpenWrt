@@ -22,13 +22,5 @@ exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-set-root-password
 
-# HomeProxy 补丁路径
-TARGET="feeds/luci/applications/luci-app-homeproxy/root/etc/homeproxy/scripts/generate_client.uc"
 
-# 1. 修复 Transport "raw" 崩溃问题 (Sing-box 1.8+ 兼容性)
-sed -i 's/transport: !isEmpty(node.transport) ? {/transport: (!isEmpty(node.transport) \&\& node.transport !== "raw") ? {/' $TARGET
-
-# 2. 注入 Mainland China 分流规则 (加固单行版，避免语法错误)
-# 插入在 config.route.final 之前
-sed -i "/config.route.final = 'main-out';/i \        if (routing_mode === 'bypass_mainland_china') { push(config.route.rules, { rule_set: 'geosite-cn', action: 'route', outbound: 'direct-out' }); push(config.route.rules, { rule_set: 'geoip-cn', action: 'route', outbound: 'direct-out' }); }" $TARGET
-
+# 注意：HomeProxy 补丁已集成到 maifeipin/homeproxy 源码，此处不再需要临时补丁。

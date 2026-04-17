@@ -13,5 +13,6 @@
 # Uncomment a feed source
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
-# Add a feed source
-# helloworld 源已移除，HomeProxy 为 ImmortalWrt 原生内置，无需额外 feed
+# 移除默认的 HomeProxy 并强制使用 maifeipin 的个人修复版
+rm -rf feeds/luci/applications/luci-app-homeproxy
+git clone https://github.com/maifeipin/homeproxy.git package/luci-app-homeproxy
