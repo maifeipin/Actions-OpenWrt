@@ -31,8 +31,7 @@ curl -sL https://github.com/MetaCubeX/metacubexd/releases/latest/download/compre
 
 # ============================================================
 # sing-box 版本说明
-# openwrt-23.05 feeds 自带 sing-box v1.11.15（Go 1.21 编译）。
-# v1.11.x 完全兼容我们的 URI-based DNS + routing-driven
-# resolution schema。无需强制升级到 1.12.x（需要 Go 1.24）。
-# 如需升级 sing-box，须同时升级 ImmortalWrt 基线到 master 分支。
+# openwrt-24.10 feeds 自带 sing-box v1.12.25（Go 1.23 编译）。
+# 我们的 homeproxy fork 使用 legacy DNS 格式（address_resolver），
+# 在 1.12.x 中仍完全兼容（deprecated 但可用，1.14 才移除）。
 # ============================================================
