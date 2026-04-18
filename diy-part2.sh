@@ -30,16 +30,9 @@ mkdir -p package/luci-app-homeproxy/root/etc/homeproxy/ui
 curl -sL https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz | tar -xz -C package/luci-app-homeproxy/root/etc/homeproxy/ui
 
 # ============================================================
-# 固化 sing-box 版本为 1.12.25
-# 我们的 homeproxy 大师版 schema（URI-based DNS, routing-driven
-# resolution, clash_api）已在此版本上完整验证。
-# 锁定版本可防止上游 feeds 升级导致 schema 不兼容。
+# sing-box 版本说明
+# openwrt-23.05 feeds 自带 sing-box v1.11.15（Go 1.21 编译）。
+# v1.11.x 完全兼容我们的 URI-based DNS + routing-driven
+# resolution schema。无需强制升级到 1.12.x（需要 Go 1.24）。
+# 如需升级 sing-box，须同时升级 ImmortalWrt 基线到 master 分支。
 # ============================================================
-SINGBOX_MK="feeds/packages/net/sing-box/Makefile"
-if [ -f "$SINGBOX_MK" ]; then
-  sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1.12.25/' "$SINGBOX_MK"
-  sed -i 's/^PKG_HASH:=.*/PKG_HASH:=881435f07b5ab8170ccf3cb69e87130759521dc0ed1ae4bfeacbe7772a93a158/' "$SINGBOX_MK"
-  echo ">>> sing-box pinned to v1.12.25"
-else
-  echo ">>> WARNING: sing-box Makefile not found at $SINGBOX_MK"
-fi
