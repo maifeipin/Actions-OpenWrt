@@ -13,6 +13,5 @@
 # Uncomment a feed source
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
-# 移除默认的 HomeProxy 并强制使用 maifeipin 的个人修复版
-rm -rf feeds/luci/applications/luci-app-homeproxy
+# 强制拉取 maifeipin 的个人修复版（大师加固版）
 git clone https://github.com/maifeipin/homeproxy.git package/luci-app-homeproxy
