@@ -20,6 +20,8 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+  push:
+    branches: [ main ]
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt

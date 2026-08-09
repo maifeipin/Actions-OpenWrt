@@ -41,7 +41,7 @@ chmod +x files/usr/bin/sing-box
 rm -rf /tmp/singbox-musl.tar.gz "/tmp/sing-box-${SINGBOX_VERSION}-linux-amd64-musl"
 echo "[+] sing-box musl 二进制已内置到 files/usr/bin/sing-box"
 
-# 5. 创建 sing-box procd 守护脚本（含 TUN 设备自动重建）
+# 5. 创建 sing-box procd 守护脚本（含 TUN 设备自动重建与智能 DNS 切换）
 mkdir -p files/etc/init.d
 cat > files/etc/init.d/sing-box <<'INITEOF'
 #!/bin/sh /etc/rc.common
@@ -55,6 +55,15 @@ start_service() {
     [ ! -c /dev/net/tun ] && mknod /dev/net/tun c 10 200
     chmod 666 /dev/net/tun
   }
+
+  # 启动时自动接管 dnsmasq 重定向至 Sing-box DNS (127.0.0.1#1053)
+  uci set dhcp.@dnsmasq[0].noresolv='1' 2>/dev/null
+  uci set dhcp.@dnsmasq[0].localuse='1' 2>/dev/null
+  uci del dhcp.@dnsmasq[0].server 2>/dev/null || true
+  uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#1053' 2>/dev/null
+  uci commit dhcp 2>/dev/null
+  /etc/init.d/dnsmasq restart 2>/dev/null || true
+
   procd_open_instance
   procd_set_param command /usr/bin/sing-box run -c /etc/sing-box/config.json
   procd_set_param respawn 3600 5 0
@@ -62,9 +71,19 @@ start_service() {
   procd_set_param stderr 1
   procd_close_instance
 }
+
+stop_service() {
+  # 停止 Sing-box 时自动还原 dnsmasq 直连公共 DNS (223.5.5.5)，防全网断网
+  uci del dhcp.@dnsmasq[0].noresolv 2>/dev/null || true
+  uci del dhcp.@dnsmasq[0].server 2>/dev/null || true
+  uci add_list dhcp.@dnsmasq[0].server='223.5.5.5' 2>/dev/null
+  uci commit dhcp 2>/dev/null
+  /etc/init.d/dnsmasq restart 2>/dev/null || true
+}
 INITEOF
 chmod +x files/etc/init.d/sing-box
 
 # 6. 固件内置权限与目录初始化
 mkdir -p files/usr/bin files/etc/sing-box/nodes
 chmod +x files/usr/bin/sb files/usr/bin/sing-box-menu 2>/dev/null || true
+
