@@ -483,6 +483,177 @@ menu_import() {
     fi
 }
 
+# 生成多节点 URL-Test 自动故障转移与健康检查配置
+generate_urltest_config() {
+    local node_files=$(ls -1 "$NODES_DIR"/*.json 2>/dev/null)
+    if [ -z "$node_files" ]; then
+        return 1
+    fi
+
+    local outbound_list=""
+    local node_tags=""
+    local idx=1
+
+    for f in $node_files; do
+        local tag="node_$idx"
+        if command -v jsonfilter >/dev/null 2>&1; then
+            local ob=$(jsonfilter -i "$f" -e '@.outbounds[0]' 2>/dev/null)
+            if [ -n "$ob" ]; then
+                ob=$(echo "$ob" | sed "s/\"tag\": *\"[^\"]*\"/\"tag\": \"$tag\"/")
+                [ -n "$outbound_list" ] && outbound_list="$outbound_list,"
+                outbound_list="$outbound_list
+$ob"
+                [ -n "$node_tags" ] && node_tags="$node_tags, "
+                node_tags="$node_tags\"$tag\""
+                idx=$((idx + 1))
+            fi
+        fi
+    done
+
+    if [ -z "$node_tags" ]; then
+        return 1
+    fi
+
+    local all_outbounds="$node_tags, \"direct\""
+
+    cat <<EOF
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "tun0",
+      "address": [
+        "172.19.0.1/30"
+      ],
+      "auto_route": true,
+      "auto_redirect": true,
+      "strict_route": true,
+      "stack": "system"
+    },
+    {
+      "type": "direct",
+      "tag": "dns-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1053,
+      "override_address": "8.8.8.8",
+      "override_port": 53
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "proxy",
+      "outbounds": [
+        $all_outbounds
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "idle_timeout": "30m"
+    },
+$outbound_list,
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "dns_domestic",
+        "server": "223.5.5.5",
+        "server_port": 53
+      },
+      {
+        "type": "https",
+        "tag": "dns_fallback",
+        "server": "8.8.8.8",
+        "server_port": 443,
+        "path": "/dns-query",
+        "tls": {
+          "enabled": true,
+          "server_name": "dns.google"
+        },
+        "detour": "proxy"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          ".lan"
+        ],
+        "server": "dns_domestic"
+      },
+      {
+        "rule_set": "geosite-cn",
+        "server": "dns_domestic"
+      }
+    ],
+    "final": "dns_fallback",
+    "strategy": "ipv4_only"
+  },
+  "route": {
+    "default_domain_resolver": {
+      "server": "dns_domestic"
+    },
+    "rules": [
+      {
+        "inbound": [
+          "tun-in"
+        ],
+        "action": "sniff"
+      },
+      {
+        "inbound": [
+          "dns-in"
+        ],
+        "action": "hijack-dns"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "rule_set": "geoip-cn",
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "geosite-cn",
+        "format": "binary",
+        "path": "/etc/sing-box/geosite-cn.srs"
+      },
+      {
+        "type": "local",
+        "tag": "geoip-cn",
+        "format": "binary",
+        "path": "/etc/sing-box/geoip-cn.srs"
+      }
+    ],
+    "final": "proxy",
+    "auto_detect_interface": true
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "path": "/tmp/sing-box-cache.db"
+    }
+  }
+}
+EOF
+}
+
 # 菜单 2：节点列表 & 切换 (彻底消除 eval)
 menu_list_and_switch() {
     echo ""
@@ -495,6 +666,12 @@ menu_list_and_switch() {
         echo -e "${YELLOW}[!] 尚无保存的节点，请先选择 [1] 导入新节点。${NC}"
         return
     fi
+
+    local auto_tag=""
+    if [ "$active_name" = "Auto-Fallback-UrlTest" ]; then
+        auto_tag="${GREEN}[ACTIVE 当前在用]${NC}"
+    fi
+    echo -e "  [0] ${MAGENTA}⚡【全节点自动故障转移 / 自动优选】(URL-Test 自动测试连通性与降级)${NC} $auto_tag"
 
     local i=1
     for f in $files; do
@@ -510,11 +687,25 @@ menu_list_and_switch() {
     local total=$((i - 1))
 
     echo ""
-    read -p "请输入要切换的节点编号 [1-$total] (按回车返回): " choice
+    read -p "请输入要切换的节点编号 [0-$total] (按回车返回): " choice
     [ -z "$choice" ] && return
 
     choice="$(echo "$choice" | tr -cd '0-9')"
     [ -z "$choice" ] && return
+
+    if [ "$choice" = "0" ]; then
+        echo -e "${CYAN}[*] 正在构建全节点自动故障转移 (URL-Test) 配置...${NC}"
+        generate_urltest_config > "$CONFIG_FILE"
+        if ! verify_config_file "$CONFIG_FILE"; then
+            return
+        fi
+        echo "Auto-Fallback-UrlTest" > "$ACTIVE_FILE"
+        echo -e "${YELLOW}[*] 正在重启 sing-box...${NC}"
+        /etc/init.d/sing-box restart
+        sleep 2
+        echo -e "${GREEN}[✓] 已成功开启【全节点自动故障转移 / 自动优选】模式！${NC}"
+        return
+    fi
 
     local chosen_path="$(get_nth_node_file "$choice")"
     local chosen_name="$(basename "$chosen_path" .json 2>/dev/null)"
