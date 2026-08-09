@@ -9,12 +9,6 @@ ACTIVE_FILE="/etc/sing-box/active_node.name"
 CONFIG_FILE="/etc/sing-box/config.json"
 mkdir -p "$NODES_DIR"
 
-# 自动创建 GLibc 动态解释器软链接（防止 OpenWrt Musl 环境下 sing-box: not found 报错）
-if [ ! -e /lib64/ld-linux-x86-64.so.2 ] && [ -f /lib/ld-musl-x86_64.so.1 ]; then
-    mkdir -p /lib64
-    ln -sf /lib/ld-musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2 2>/dev/null || true
-fi
-
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -401,6 +395,18 @@ verify_config_file() {
         echo -e "${RED}[!] 错误：配置语法校验未通过，放弃应用！${NC}"
         echo -e "${RED}详细错误日志:${NC}"
         cat /tmp/sb_check.log
+        # 检测 libcronet.so 缺失并提供修复指引
+        if grep -qi "cronet.*library not found" /tmp/sb_check.log 2>/dev/null; then
+            echo ""
+            echo -e "${YELLOW}━━━ libcronet.so 缺失修复指引 ━━━${NC}"
+            echo -e "  NaiveProxy 出站需要 libcronet.so 动态库，当前路由器上未找到。"
+            echo -e "  请在路由器终端执行以下命令修复："
+            echo ""
+            echo -e "  ${CYAN}wget -O /usr/lib/libcronet.so https://github.com/sagernet/cronet-go/releases/download/v148.0.7778.96-1/libcronet-linux-amd64.so${NC}"
+            echo -e "  ${CYAN}/etc/init.d/sing-box restart${NC}"
+            echo ""
+            echo -e "  (arm64 架构请将 URL 中的 amd64 替换为 arm64)"
+        fi
         return 1
     fi
     echo -e "${GREEN}[+] 语法校验通过。${NC}"

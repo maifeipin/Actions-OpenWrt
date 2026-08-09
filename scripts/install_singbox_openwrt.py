@@ -34,8 +34,8 @@ ROUTER_IP_INIT = "192.168.2.1"
 ROUTER_IP_TARGET = "192.168.2.253"
 SSH_USER = "root"
 
-# 下载地址 (支持 x86_64 和 arm64 架构)
-SINGBOX_URL_AMD64 = "https://github.com/SagerNet/sing-box/releases/download/v1.13.16/sing-box-1.13.16-linux-amd64.tar.gz"
+# 下载地址 (支持 x86_64 和 arm64 架构，使用 musl 版本适配 OpenWrt)
+SINGBOX_URL_AMD64 = "https://github.com/SagerNet/sing-box/releases/download/v1.13.16/sing-box-1.13.16-linux-amd64-musl.tar.gz"
 SINGBOX_URL_ARM64 = "https://github.com/SagerNet/sing-box/releases/download/v1.13.16/sing-box-1.13.16-linux-arm64-musl.tar.gz"
 GEOIP_URL = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs"
 GEOSITE_URL = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs"
@@ -855,12 +855,11 @@ def main():
     )
     print("[+] kmod-tun 模块已就绪。")
 
-    # 5. 创建 /dev/net/tun 设备节点及 GLibc 动态解释器软链接（解决 OpenWrt Musl 环境下 sing-box: not found）
-    print("[*] 正在创建 /dev/net/tun 虚拟网卡节点与动态解释器软链接...")
+    # 5. 创建 /dev/net/tun 设备节点（TUN 透明代理依赖）
+    print("[*] 正在创建 /dev/net/tun 虚拟网卡节点...")
     run_local_cmd(
-        f'{ssh} "mkdir -p /dev/net /lib64; '
-        f'[ ! -c /dev/net/tun ] && mknod /dev/net/tun c 10 200 && chmod 666 /dev/net/tun || true; '
-        f'[ ! -e /lib64/ld-linux-x86-64.so.2 ] && [ -f /lib/ld-musl-x86_64.so.1 ] && ln -sf /lib/ld-musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2 || true"'
+        f'{ssh} "mkdir -p /dev/net; '
+        f'[ ! -c /dev/net/tun ] && mknod /dev/net/tun c 10 200 && chmod 666 /dev/net/tun || true"'
     )
 
     # 6. 生成配置文件并上传
@@ -874,7 +873,7 @@ def main():
     with open(init_script_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(generate_init_script())
 
-    run_critical_cmd(f'{ssh} "mkdir -p /etc/sing-box /etc/sing-box/nodes"', "创建 /etc/sing-box 目录")
+    run_critical_cmd(f'{ssh} "mkdir -p /etc/sing-box /etc/sing-box/nodes"', "创建目录")
 
     menu_sh_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sing-box-menu.sh")
 
@@ -901,7 +900,7 @@ def main():
     run_critical_cmd(f'{ssh} "/etc/init.d/sing-box enable"', "启用 sing-box 自启")
     run_critical_cmd(f'{ssh} "/etc/init.d/sing-box restart"', "启动 sing-box")
 
-    for path in ["/usr/bin/sing-box", "/etc/sing-box/", "/etc/init.d/sing-box", "/usr/bin/sb", "/usr/bin/sing-box-menu", "/lib64/"]:
+    for path in ["/usr/bin/sing-box", "/etc/sing-box/", "/etc/init.d/sing-box", "/usr/bin/sb", "/usr/bin/sing-box-menu"]:
         run_local_cmd(
             f"{ssh} \"grep -qF '{path}' /etc/sysupgrade.conf "
             f"|| echo '{path}' >> /etc/sysupgrade.conf\""

@@ -27,6 +27,44 @@ rm -rf feeds/luci/applications/luci-app-homeproxy
 rm -rf package/feeds/luci/luci-app-homeproxy
 rm -rf package/luci-app-homeproxy
 
-# 4. 固件内置权限与目录初始化
+# 4. 下载 musl 版 sing-box 二进制（含 NaiveProxy 出站，CGO 静态链接 libcronet）
+#    OpenWrt feeds 自带的 sing-box 不含 with_naive_outbound（需 Chromium 工具链），
+#    故从官方 GitHub release 下载 musl 版（with_musl 标签，CGO 静态链接 libcronet）。
+SINGBOX_VERSION="1.13.16"
+SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64-musl.tar.gz"
+echo "[*] 下载 musl 版 sing-box v${SINGBOX_VERSION} (含 NaiveProxy 支持)..."
+curl -sSL "$SINGBOX_URL" -o /tmp/singbox-musl.tar.gz
+tar -xzf /tmp/singbox-musl.tar.gz -C /tmp/
+mkdir -p files/usr/bin
+cp "/tmp/sing-box-${SINGBOX_VERSION}-linux-amd64-musl/sing-box" files/usr/bin/sing-box
+chmod +x files/usr/bin/sing-box
+rm -rf /tmp/singbox-musl.tar.gz "/tmp/sing-box-${SINGBOX_VERSION}-linux-amd64-musl"
+echo "[+] sing-box musl 二进制已内置到 files/usr/bin/sing-box"
+
+# 5. 创建 sing-box procd 守护脚本（含 TUN 设备自动重建）
+mkdir -p files/etc/init.d
+cat > files/etc/init.d/sing-box <<'INITEOF'
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+
+start_service() {
+  [ ! -c /dev/net/tun ] && {
+    modprobe tun 2>/dev/null || insmod /lib/modules/"$(uname -r)"/tun.ko 2>/dev/null
+    mkdir -p /dev/net
+    [ ! -c /dev/net/tun ] && mknod /dev/net/tun c 10 200
+    chmod 666 /dev/net/tun
+  }
+  procd_open_instance
+  procd_set_param command /usr/bin/sing-box run -c /etc/sing-box/config.json
+  procd_set_param respawn 3600 5 0
+  procd_set_param stdout 1
+  procd_set_param stderr 1
+  procd_close_instance
+}
+INITEOF
+chmod +x files/etc/init.d/sing-box
+
+# 6. 固件内置权限与目录初始化
 mkdir -p files/usr/bin files/etc/sing-box/nodes
 chmod +x files/usr/bin/sb files/usr/bin/sing-box-menu 2>/dev/null || true

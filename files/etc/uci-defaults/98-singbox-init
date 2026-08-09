@@ -2,4 +2,6 @@
 # Sing-box & sb (sing-box-menu) 固件首次启动初始化脚本
 mkdir -p /etc/sing-box/nodes
 chmod +x /usr/bin/sb /usr/bin/sing-box-menu 2>/dev/null || true
+# 确保 musl 二进制在 sysupgrade 后保留（覆盖 feeds 自带版本）
+grep -qF '/usr/bin/sing-box' /etc/sysupgrade.conf || echo '/usr/bin/sing-box' >> /etc/sysupgrade.conf
 exit 0
