@@ -56,7 +56,7 @@ start_service() {
     chmod 666 /dev/net/tun
   }
 
-  # 预检：若配置文件缺失或校验失败（如未导入节点），自动回退为传统直连路由模式，防开机断网
+  # 1. 预检：若配置文件缺失或校验失败（如未导入节点），自动回退为传统直连路由模式，防开机断网
   if [ ! -f /etc/sing-box/config.json ] || ! /usr/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1; then
     logger -t sing-box "Sing-box 配置文件缺失或语法错误，自动降级为传统直连路由模式"
     uci del dhcp.@dnsmasq[0].noresolv 2>/dev/null || true
@@ -67,20 +67,34 @@ start_service() {
     return 1
   fi
 
-  # 校验通过：启动时自动接管 dnsmasq 重定向至 Sing-box DNS (127.0.0.1#1053)
-  uci set dhcp.@dnsmasq[0].noresolv='1' 2>/dev/null
-  uci set dhcp.@dnsmasq[0].localuse='1' 2>/dev/null
-  uci del dhcp.@dnsmasq[0].server 2>/dev/null || true
-  uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#1053' 2>/dev/null
-  uci commit dhcp 2>/dev/null
-  /etc/init.d/dnsmasq restart 2>/dev/null || true
-
+  # 2. 预检通过：拉起 Sing-box 进程
   procd_open_instance
   procd_set_param command /usr/bin/sing-box run -c /etc/sing-box/config.json
   procd_set_param respawn 3600 5 0
   procd_set_param stdout 1
   procd_set_param stderr 1
   procd_close_instance
+
+  # 3. 进程探针二次检查：等待 2 秒确认 Sing-box 进程是否成功保持运行
+  sleep 2
+  if pidof sing-box >/dev/null 2>&1; then
+    # 启动成功：接管 dnsmasq 重定向至 Sing-box DNS (127.0.0.1#1053)
+    uci set dhcp.@dnsmasq[0].noresolv='1' 2>/dev/null
+    uci set dhcp.@dnsmasq[0].localuse='1' 2>/dev/null
+    uci del dhcp.@dnsmasq[0].server 2>/dev/null || true
+    uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#1053' 2>/dev/null
+    uci commit dhcp 2>/dev/null
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
+  else
+    # 启动失败（进程已挂）：自动回退为传统直连路由模式，防断网
+    logger -t sing-box "Sing-box 进程启动失败，自动回退为传统直连路由模式"
+    uci del dhcp.@dnsmasq[0].noresolv 2>/dev/null || true
+    uci del dhcp.@dnsmasq[0].server 2>/dev/null || true
+    uci add_list dhcp.@dnsmasq[0].server='223.5.5.5' 2>/dev/null
+    uci commit dhcp 2>/dev/null
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
+    return 1
+  fi
 }
 
 stop_service() {
