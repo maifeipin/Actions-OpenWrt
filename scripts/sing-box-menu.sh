@@ -819,6 +819,50 @@ menu_update_rules() {
     esac
 }
 
+# 菜单 5：日志与状态
+menu_status() {
+    echo ""
+    echo -e "${CYAN}── Sing-box 状态与日志 ──────────────────────────────${NC}"
+    local pid="$(pidof sing-box)"
+    if [ -n "$pid" ]; then
+        echo -e "运行状态: ${GREEN}● 运行中 (PID: $pid)${NC}"
+    else
+        echo -e "运行状态: ${RED}✗ 未运行${NC}"
+    fi
+    local active_name="未知"
+    [ -f "$ACTIVE_FILE" ] && active_name="$(cat "$ACTIVE_FILE")"
+    print_node_card "$active_name" "$CONFIG_FILE"
+
+    echo ""
+    echo -e "${YELLOW}最近 25 行日志:${NC}"
+    logread 2>/dev/null | grep -i sing-box | tail -n 25
+}
+
+# 菜单 6：删除节点 (彻底消除 eval)
+menu_delete_node() {
+    echo ""
+    echo -e "${CYAN}── 删除节点 ─────────────────────────────────────────${NC}"
+    local files=$(ls -1 "$NODES_DIR"/*.json 2>/dev/null)
+    if [ -z "$files" ]; then
+        echo -e "${YELLOW}[!] 尚无节点${NC}"
+        return
+    fi
+    local i=1
+    for f in $files; do
+        get_node_info "$f"
+        echo -e "  [$i] ${CYAN}$(basename "$f" .json)${NC} ${YELLOW}[$PROTO_LABEL | $INFO_SERVER:$INFO_PORT]${NC}"
+        i=$((i + 1))
+    done
+    read -p "请输入要删除的节点编号: " choice
+    choice="$(echo "$choice" | tr -cd '0-9')"
+    [ -z "$choice" ] && return
+    local chosen_del="$(get_nth_node_file "$choice")"
+    if [ -n "$chosen_del" ] && [ -f "$chosen_del" ]; then
+        rm -f "$chosen_del"
+        echo -e "${GREEN}[+] 节点已删除${NC}"
+    fi
+}
+
 # 主循环
 while true; do
     echo ""
