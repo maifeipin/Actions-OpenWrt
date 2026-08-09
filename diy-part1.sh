@@ -12,6 +12,3 @@
 
 # Uncomment a feed source
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
-
-# 强制拉取 maifeipin 的个人修复版（大师加固版）
-git clone https://github.com/maifeipin/homeproxy.git package/luci-app-homeproxy

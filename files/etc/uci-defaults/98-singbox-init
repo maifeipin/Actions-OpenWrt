@@ -1,0 +1,5 @@
+#!/bin/sh
+# Sing-box & sb (sing-box-menu) 固件首次启动初始化脚本
+mkdir -p /etc/sing-box/nodes
+chmod +x /usr/bin/sb /usr/bin/sing-box-menu 2>/dev/null || true
+exit 0

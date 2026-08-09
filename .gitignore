@@ -1,0 +1,10 @@
+# Temporary build and deployment directories
+scripts/tmp_deploy/
+tmp_deploy/
+
+# Configuration and secrets
+config.json
+*.db
+*.sqlite
+*.log
+*.zip

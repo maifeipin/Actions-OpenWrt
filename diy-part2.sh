@@ -10,10 +10,10 @@
 # See /LICENSE for more information.
 #
 
-# 固化网关 IP
+# 1. 固化网关 IP
 sed -i 's/192.168.1.1/192.168.2.253/g' package/base-files/files/bin/config_generate
 
-# 设置登录密码为 password (更稳妥的 uci-defaults 方式)
+# 2. 设置登录密码为 password (更稳妥的 uci-defaults 方式)
 mkdir -p package/base-files/files/etc/uci-defaults
 cat > package/base-files/files/etc/uci-defaults/99-set-root-password <<EOF
 #!/bin/sh
@@ -22,20 +22,11 @@ exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-set-root-password
 
-
-# 彻底清理官方源自带的旧版 HomeProxy 残余，确保强制使用 package/ 里的加固版
+# 3. 彻底清理旧版 HomeProxy，全面改用原生 Sing-box TUN + sb 控制台
 rm -rf feeds/luci/applications/luci-app-homeproxy
 rm -rf package/feeds/luci/luci-app-homeproxy
+rm -rf package/luci-app-homeproxy
 
-# 注意：HomeProxy 核心补丁已集成到 maifeipin/homeproxy 源码，此处不再需要临时补丁。
-
-# 集成 MetaCubeXD 面板到 HomeProxy
-mkdir -p package/luci-app-homeproxy/root/etc/homeproxy/ui
-curl -sL https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz | tar -xz -C package/luci-app-homeproxy/root/etc/homeproxy/ui
-
-# ============================================================
-# sing-box 版本说明
-# openwrt-24.10 feeds 自带 sing-box v1.12.25（Go 1.23 编译）。
-# 我们的 homeproxy fork 使用 legacy DNS 格式（address_resolver），
-# 在 1.12.x 中仍完全兼容（deprecated 但可用，1.14 才移除）。
-# ============================================================
+# 4. 固件内置权限与目录初始化
+mkdir -p files/usr/bin files/etc/sing-box/nodes
+chmod +x files/usr/bin/sb files/usr/bin/sing-box-menu 2>/dev/null || true
