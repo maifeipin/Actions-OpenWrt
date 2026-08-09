@@ -747,67 +747,76 @@ menu_restart() {
     fi
 }
 
-# 菜单 4：更新分流规则库
-menu_update_rules() {
-    echo -e "${CYAN}[*] 正在下载最新 GeoIP/GeoSite 规则库...${NC}"
-    wget -O /tmp/geoip-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs 2>/dev/null || \
-    curl -sSL -o /tmp/geoip-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs
+# 规则库静默更新（供 Cron 定时任务调用）
+menu_update_rules_quiet() {
+    logger -t sing-box-rules "正在后台下载最新 GeoIP/GeoSite 规则库..."
+    wget -O /tmp/geoip-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs >/dev/null 2>&1 || \
+    curl -sSL -o /tmp/geoip-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs >/dev/null 2>&1
 
-    wget -O /tmp/geosite-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs 2>/dev/null || \
-    curl -sSL -o /tmp/geosite-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs
+    wget -O /tmp/geosite-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs >/dev/null 2>&1 || \
+    curl -sSL -o /tmp/geosite-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs >/dev/null 2>&1
 
     if [ -f /tmp/geoip-cn.srs ] && [ -f /tmp/geosite-cn.srs ]; then
         mv /tmp/geoip-cn.srs /etc/sing-box/geoip-cn.srs
         mv /tmp/geosite-cn.srs /etc/sing-box/geosite-cn.srs
-        echo -e "${GREEN}[+] 规则库更新成功，正在重启 sing-box...${NC}"
+        logger -t sing-box-rules "规则库更新成功，正在重启 sing-box..."
+        /etc/init.d/sing-box restart >/dev/null 2>&1
+    else
+        logger -t sing-box-rules "规则库更新失败"
+    fi
+}
+
+# 命令行参数支持 (非交互式)
+case "$1" in
+    update-rules|cron-update)
+        menu_update_rules_quiet
+        exit 0
+        ;;
+    restart)
         /etc/init.d/sing-box restart
-    else
-        echo -e "${RED}[-] 下载规则库失败，请检查路由器外网连接${NC}"
-    fi
-}
+        exit 0
+        ;;
+    status)
+        menu_status
+        exit 0
+        ;;
+esac
 
-# 菜单 5：日志与状态
-menu_status() {
+# 菜单 4：更新分流规则库 & Cron 定时配置
+menu_update_rules() {
     echo ""
-    echo -e "${CYAN}── Sing-box 状态与日志 ──────────────────────────────${NC}"
-    local pid="$(pidof sing-box)"
-    if [ -n "$pid" ]; then
-        echo -e "运行状态: ${GREEN}● 运行中 (PID: $pid)${NC}"
-    else
-        echo -e "运行状态: ${RED}✗ 未运行${NC}"
-    fi
-    local active_name="未知"
-    [ -f "$ACTIVE_FILE" ] && active_name="$(cat "$ACTIVE_FILE")"
-    print_node_card "$active_name" "$CONFIG_FILE"
-
+    echo -e "${CYAN}── 规则库更新 & 定时自动更新管理 ──────────────────────${NC}"
+    echo "  1. 立即手动下载更新 (GeoIP & GeoSite)"
+    echo "  2. 开启/更新 Cron 每周自动更新 (每周日凌晨 4 点)"
+    echo "  3. 关闭 Cron 自动更新规则库"
+    echo "  0. 返回"
     echo ""
-    echo -e "${YELLOW}最近 25 行日志:${NC}"
-    logread 2>/dev/null | grep -i sing-box | tail -n 25
-}
-
-# 菜单 6：删除节点 (彻底消除 eval)
-menu_delete_node() {
-    echo ""
-    echo -e "${CYAN}── 删除节点 ─────────────────────────────────────────${NC}"
-    local files=$(ls -1 "$NODES_DIR"/*.json 2>/dev/null)
-    if [ -z "$files" ]; then
-        echo -e "${YELLOW}[!] 尚无节点${NC}"
-        return
-    fi
-    local i=1
-    for f in $files; do
-        get_node_info "$f"
-        echo -e "  [$i] ${CYAN}$(basename "$f" .json)${NC} ${YELLOW}[$PROTO_LABEL | $INFO_SERVER:$INFO_PORT]${NC}"
-        i=$((i + 1))
-    done
-    read -p "请输入要删除的节点编号: " choice
-    choice="$(echo "$choice" | tr -cd '0-9')"
-    [ -z "$choice" ] && return
-    local chosen_del="$(get_nth_node_file "$choice")"
-    if [ -n "$chosen_del" ] && [ -f "$chosen_del" ]; then
-        rm -f "$chosen_del"
-        echo -e "${GREEN}[+] 节点已删除${NC}"
-    fi
+    read -p "请选择操作 [0-3]: " r_choice
+    case "$r_choice" in
+        1)
+            echo -e "${CYAN}[*] 正在下载最新 GeoIP/GeoSite 规则库...${NC}"
+            menu_update_rules_quiet
+            if [ -f /etc/sing-box/geoip-cn.srs ] && [ -f /etc/sing-box/geosite-cn.srs ]; then
+                echo -e "${GREEN}[+] 规则库更新成功！${NC}"
+            else
+                echo -e "${RED}[-] 下载规则库失败，请检查路由器外网连接${NC}"
+            fi
+            ;;
+        2)
+            # 添加/替换 cron 任务: 每周日凌晨 4 点自动更新
+            ( crontab -l 2>/dev/null | grep -v 'sb update-rules' ; echo "0 4 * * 0 /usr/bin/sb update-rules >/dev/null 2>&1" ) | crontab -
+            /etc/init.d/cron restart 2>/dev/null || true
+            echo -e "${GREEN}[+] 已开启每周自动更新任务！(每周日 04:00 自动更新规则库并重启服务)${NC}"
+            ;;
+        3)
+            ( crontab -l 2>/dev/null | grep -v 'sb update-rules' ) | crontab -
+            /etc/init.d/cron restart 2>/dev/null || true
+            echo -e "${YELLOW}[!] 已关闭每周自动更新规则库任务。${NC}"
+            ;;
+        0|*)
+            return
+            ;;
+    esac
 }
 
 # 主循环
@@ -819,7 +828,7 @@ while true; do
     echo "  1. 导入新节点 (NaiveProxy 命令 / Reality vless://)"
     echo "  2. 节点列表 & 切换节点"
     echo "  3. 重启 sing-box 服务"
-    echo "  4. 更新 GeoIP / GeoSite 分流规则库"
+    echo "  4. 更新 GeoIP / GeoSite 分流规则库 & 定时设置"
     echo "  5. 查看运行状态 & 最近日志"
     echo "  6. 删除已保存的节点"
     echo "  0. 退出"
